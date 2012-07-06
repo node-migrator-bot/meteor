@@ -231,7 +231,7 @@ Meteor.Collection.prototype.allow = function(options) {
 
 // assuming the collection is restricted
 Meteor.Collection.prototype._allowInsert = function(userId, doc) {
-  if (this._validators.length === 0) {
+  if (this._validators.insert.length === 0) {
     throw new Meteor.Error("No insert validators set on restricted collection");
   }
 
