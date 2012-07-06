@@ -221,9 +221,9 @@ Meteor.Collection.prototype._defineMutationMethods = function() {
 // options.remove {Function(userId, docs)}
 //   return true to allow the user to remove these documents
 //
-// options.fetch {Array} Array of fields to fetch for these
-//   validators. If any call to allow does not have this option
-//   the all fields are loaded.
+// options.fetch {Array}
+//   Fields to fetch for these validators. If any call to allow does
+//   not have this option then all fields are loaded.
 Meteor.Collection.prototype.allow = function(options) {
   var self = this;
   self._restricted = true;
