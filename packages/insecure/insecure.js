@@ -1,1 +1,1 @@
-Meteor.insecure = true;
+Collection.insecure = true;

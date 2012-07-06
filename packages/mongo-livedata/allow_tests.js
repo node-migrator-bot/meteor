@@ -1,9 +1,11 @@
 (function () {
+  // helper for defining a collection, subscribing to it, and defining
+  // a method to clear it
   var defineCollection = function(name, insecure) {
-    var oldInsecure = Meteor.insecure;
-    Meteor.insecure = insecure;
+    var oldInsecure = Meteor.Collection.insecure;
+    Meteor.Collection.insecure = insecure;
     var collection = new Meteor.Collection(name);
-    Meteor.insecure = oldInsecure;
+    Meteor.Collection.insecure = oldInsecure;
 
     if (Meteor.is_server) {
       Meteor.publish("collection-" + name, function() {
@@ -112,7 +114,7 @@
       function (test, expect) {
         securedCollectionForPartialAllowTest.update(
           {}, {$set: {updated: true}}, expect(function (err, res) {
-            test.equal(err.error, 'No update validators set on restricted collection');
+            test.equal(err.error, 'Access denied. No update validators set on restricted collection.');
           }));
       }
     ]);
@@ -263,17 +265,25 @@
               expect(function (err, res) {
                 test.equal(
                   err.error,
-                  "Can't update to a new object on a restricted collection");
+                  "Access denied. Can't replace document in restricted collection.");
               }));
           },
 
-          // can't update with dotted fields
+          // updating dotted fields works as if we are chaninging their top part
           function (test, expect) {
             collection.update(
-              {canInsert: true},
+              {canInsert: true, canUpdate: true},
               {$set: {"dotted.field": 1}},
               expect(function (err, res) {
-                test.equal(err.error, "Can't update dotted fields on restricted collections");
+                test.equal(collection.findOne({canUpdate: true}).dotted.field, 1);
+              }));
+          },
+          function (test, expect) {
+            collection.update(
+              {canInsert: true, canUpdate: true},
+              {$set: {"verySecret.field": 1}},
+              expect(function (err, res) {
+                test.equal(err.error, "Access denied");
               }));
           },
 

@@ -137,8 +137,9 @@ Meteor.Collection.prototype._defineMutationMethods = function() {
   self._prefix = '/' + self._name + '/';
 
   // since tests need to check the effects of adding and removing the
-  // `insecure` package, which sets Meteor.insecure, we need this var
-  var insecure = Meteor.insecure;
+  // `insecure` package, which sets Meteor.Collection.insecure, we
+  // need this var
+  var insecure = Meteor.Collection.insecure;
 
   // mutation methods
   if (self._manager) {
@@ -232,7 +233,7 @@ Meteor.Collection.prototype.allow = function(options) {
 // assuming the collection is restricted
 Meteor.Collection.prototype._allowInsert = function(userId, doc) {
   if (this._validators.insert.length === 0) {
-    throw new Meteor.Error("No insert validators set on restricted collection");
+    throw new Meteor.Error("Accesd denied. No insert validators set on restricted collection.");
   }
 
   // all validators should return true
@@ -249,22 +250,25 @@ Meteor.Collection.prototype._validatedUpdate = function(userId, selector, mutato
   var self = this;
 
   if (self._validators.update.length === 0) {
-    throw new Meteor.Error("No update validators set on restricted collection");
+    throw new Meteor.Error("Access denied. No update validators set on restricted collection.");
   }
 
   // compute modified fields
   var fields = [];
   _.each(mutator, function (params, op) {
     if (op[0] !== '$') {
-      throw new Meteor.Error("Can't update to a new object on a restricted collection");
+      throw new Meteor.Error("Access denied. Can't replace document in restricted collection.");
     } else {
-      var newFields = _.keys(params);
-      _.each(newFields, function (field) {
-        if (field.indexOf('.') !== -1) {
-          throw new Meteor.Error("Can't update dotted fields on restricted collections");
-        }
+      _.each(_.keys(params), function (field) {
+        // treat dotted fields as if they are replacing their
+        // top-level part
+        if (field.indexOf('.') !== -1)
+          field = field.substring(0, field.indexOf('.'));
+
+        // record the field we are trying to change
+        if (!_.contains(fields, field))
+          fields.push(field);
       });
-      fields = fields.concat(newFields);
     }
   });
 
@@ -278,17 +282,18 @@ Meteor.Collection.prototype._validatedUpdate = function(userId, selector, mutato
     docs = [doc];
   }
 
+  // verify that all validators return true
   if (_.any(self._validators.update, function(validator) {
     return !validator(userId, docs, fields, mutator);
   })) {
     throw new Meteor.Error("Access denied");
   }
 
+  // construct new $in selector to replace the original one
   var idInClause = {};
   idInClause.$in = _.map(docs, function(doc) {
     return doc._id;
   });
-
   var idSelector = {_id: idInClause};
 
   self._collection.update.call(
@@ -296,7 +301,6 @@ Meteor.Collection.prototype._validatedUpdate = function(userId, selector, mutato
     idSelector,
     mutator,
     options);
-
 };
 
 // Simulate a mongo `remove` operation while validating access control
@@ -305,22 +309,23 @@ Meteor.Collection.prototype._validatedRemove = function(userId, selector) {
   var self = this;
 
   if (self._validators.remove.length === 0) {
-    throw new Meteor.Error("No remove validators set on restricted collection");
+    throw new Meteor.Error("Access denied. No remove validators set on restricted collection.");
   }
 
   var docs = self._collection.find(selector).fetch();
 
+  // verify that all validators return true
   if (_.any(self._validators.remove, function(validator) {
     return !validator(userId, docs);
   })) {
     throw new Meteor.Error("Access denied");
   }
 
+  // construct new $in selector to replace the original one
   var idInClause = {};
   idInClause.$in = _.map(docs, function(doc) {
     return doc._id;
   });
-
   var idSelector = {_id: idInClause};
 
   self._collection.remove.call(self._collection, idSelector);
