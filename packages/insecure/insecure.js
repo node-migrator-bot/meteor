@@ -1,1 +1,1 @@
-Collection.insecure = true;
+Meteor.Collection.insecure = true;
