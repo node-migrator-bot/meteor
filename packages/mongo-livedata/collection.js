@@ -127,7 +127,9 @@ Meteor.Collection.prototype._defineMutationMethods = function() {
   self._validators = {
     insert: [],
     update: [],
-    remove: []
+    remove: [],
+    fetch: [],
+    fetchAllFields: false
   };
 
   if (!self._name)
@@ -217,7 +219,11 @@ Meteor.Collection.prototype._defineMutationMethods = function() {
 //   `fields` is passed as an array of fields that are to be modified
 //
 // options.remove {Function(userId, docs)}
-//  return true to allow the user to remove these documents
+//   return true to allow the user to remove these documents
+//
+// options.fetch {Array} Array of fields to fetch for these
+//   validators. If any call to allow does not have this option
+//   the all fields are loaded.
 Meteor.Collection.prototype.allow = function(options) {
   var self = this;
   self._restricted = true;
@@ -228,6 +234,16 @@ Meteor.Collection.prototype.allow = function(options) {
     self._validators.update.push(options.update);
   if (options.remove)
     self._validators.remove.push(options.remove);
+
+  if (!self._validators.fetchAllFields) {
+    if (options.fetch) {
+      self._validators.fetch = _.union(self._validators.fetch, options.fetch);
+    } else {
+      self._validators.fetchAllFields = true;
+      // clear fetch just to make sure we don't accidentally read it
+      self._validators.fetch = null;
+    }
+  }
 };
 
 // assuming the collection is restricted
@@ -272,11 +288,19 @@ Meteor.Collection.prototype._validatedUpdate = function(userId, selector, mutato
     }
   });
 
+  var findOptions = {};
+  if (!self._validators.fetchAllFields) {
+    findOptions.fields = {};
+    _.each(self._validators.fetch, function(fieldName) {
+      findOptions.fields[fieldName] = 1;
+    });
+  }
+
   var docs;
   if (options && options.multi) {
-    docs = self._collection.find(selector).fetch();
+    docs = self._collection.find(selector, findOptions).fetch();
   } else {
-    var doc = self._collection.findOne(selector);
+    var doc = self._collection.findOne(selector, findOptions);
     if (!doc) // none satisfied!
       return;
     docs = [doc];
@@ -312,7 +336,15 @@ Meteor.Collection.prototype._validatedRemove = function(userId, selector) {
     throw new Meteor.Error("Access denied. No remove validators set on restricted collection.");
   }
 
-  var docs = self._collection.find(selector).fetch();
+  var findOptions = {};
+  if (!self._validators.fetchAllFields) {
+    findOptions.fields = {};
+    _.each(self._validators.fetch, function(fieldName) {
+      findOptions.fields[fieldName] = 1;
+    });
+  }
+
+  var docs = self._collection.find(selector, findOptions).fetch();
 
   // verify that all validators return true
   if (_.any(self._validators.remove, function(validator) {

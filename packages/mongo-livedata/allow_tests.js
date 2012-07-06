@@ -35,16 +35,20 @@
   lockedDownCollection = defineCollection(
     "collection-locked-down", false /*insecure*/);
 
-  // secured collection with same allowed modifications, both with and
+  // resticted collection with same allowed modifications, both with and
   // without the `insecure` package
-  securedCollectionDefaultSecure = defineCollection(
-    "collection-securedDefaultSecure", false /*insecure*/);
-  securedCollectionDefaultInsecure = defineCollection(
-    "collection-securedDefaultInsecure", true /*insecure*/);
-  securedCollectionForUpdateOptionsTest = defineCollection(
-    "collection-securedForUpdateOptionsTest", true /*insecure*/);
-  securedCollectionForPartialAllowTest = defineCollection(
-    "collection-securedForPartialAllowTest", true /*insecure*/);
+  restrictedCollectionDefaultSecure = defineCollection(
+    "collection-restrictedDefaultSecure", false /*insecure*/);
+  restrictedCollectionDefaultInsecure = defineCollection(
+    "collection-restrictedDefaultInsecure", true /*insecure*/);
+  restrictedCollectionForUpdateOptionsTest = defineCollection(
+    "collection-restrictedForUpdateOptionsTest", true /*insecure*/);
+  restrictedCollectionForPartialAllowTest = defineCollection(
+    "collection-restrictedForPartialAllowTest", true /*insecure*/);
+  restrictedCollectionForFetchTest = defineCollection(
+    "collection-restrictedForFetchTest", true /*insecure*/);
+  restrictedCollectionForFetchAllTest = defineCollection(
+    "collection-restrictedForFetchAllTest", true /*insecure*/);
 
   // two calls to allow to verify that all validators need to be
   // satisfied
@@ -79,12 +83,13 @@
     }
   }];
 
+
   if (Meteor.is_server) {
     _.each(allows, function (allow) {
       _.each([
-        securedCollectionDefaultSecure,
-        securedCollectionDefaultInsecure,
-        securedCollectionForUpdateOptionsTest
+        restrictedCollectionDefaultSecure,
+        restrictedCollectionDefaultInsecure,
+        restrictedCollectionForUpdateOptionsTest
       ], function (collection) {
         collection.allow(allow);
       });
@@ -92,10 +97,49 @@
 
     // just restrict one operation so that we can verify that others
     // fail
-    securedCollectionForPartialAllowTest.allow({
+    restrictedCollectionForPartialAllowTest.allow({
       insert: function() {}
     });
 
+    // verify that we only fetch the fields specified - we should
+    // be fetching just field1 and field2
+    restrictedCollectionForFetchTest.allow({
+      insert: function() { return true; },
+      update: function(userId, docs) {
+        // throw fields in first doc so that we can inspect them in test
+        throw new Meteor.Error(
+          "Test: Fields in doc: " + _.keys(docs[0]).join(','));
+      },
+      remove: function(userId, docs) {
+        // throw fields in first doc so that we can inspect them in test
+        throw new Meteor.Error(
+          "Test: Fields in doc: " + _.keys(docs[0]).join(','));
+      },
+      fetch: ['field1']
+    });
+    restrictedCollectionForFetchTest.allow({
+      fetch: ['field2']
+    });
+
+    // verify that not passing fetch to one of the calls to allow
+    // causes all fields to be fetched
+    restrictedCollectionForFetchAllTest.allow({
+      insert: function() { return true; },
+      update: function(userId, docs) {
+        // throw fields in first doc so that we can inspect them in test
+        throw new Meteor.Error(
+          "Test: Fields in doc: " + _.keys(docs[0]).join(','));
+      },
+      remove: function(userId, docs) {
+        // throw fields in first doc so that we can inspect them in test
+        throw new Meteor.Error(
+          "Test: Fields in doc: " + _.keys(docs[0]).join(','));
+      },
+      fetch: ['field1']
+    });
+    restrictedCollectionForFetchAllTest.allow({
+      insert: function() { return true; }
+    });
   }
 
   if (Meteor.is_server) {
@@ -110,12 +154,46 @@
   }
 
   if (Meteor.is_client) {
+    // test that if allow is called once then the collection is
+    // restricted, and that other mutations aren't allowed
     testAsyncMulti("collection - partial allow", [
       function (test, expect) {
-        securedCollectionForPartialAllowTest.update(
+        restrictedCollectionForPartialAllowTest.update(
           {}, {$set: {updated: true}}, expect(function (err, res) {
             test.equal(err.error, 'Access denied. No update validators set on restricted collection.');
           }));
+      }
+    ]);
+
+    // test that we only fetch the fields specified
+    testAsyncMulti("collection - fetch", [
+      function (test, expect) {
+        restrictedCollectionForFetchTest.insert(
+          {field1: 1, field2: 1, field3: 1});
+        restrictedCollectionForFetchAllTest.insert(
+          {field1: 1, field2: 1, field3: 1});
+
+      }, function (test, expect) {
+        restrictedCollectionForFetchTest.update(
+          {}, {$set: {updated: true}}, expect(function (err, res) {
+            test.equal(err.error, "Test: Fields in doc: field1,field2,_id");
+          }));
+        restrictedCollectionForFetchTest.remove(
+          {}, expect(function (err, res) {
+            test.equal(err.error, "Test: Fields in doc: field1,field2,_id");
+          }));
+
+        restrictedCollectionForFetchAllTest.update(
+          {}, {$set: {updated: true}}, expect(function (err, res) {
+            test.equal(err.error,
+                       "Test: Fields in doc: field1,field2,field3,_id");
+          }));
+        restrictedCollectionForFetchAllTest.remove(
+          {}, expect(function (err, res) {
+            test.equal(err.error,
+                       "Test: Fields in doc: field1,field2,field3,_id");
+          }));
+
       }
     ]);
   }
@@ -154,7 +232,7 @@
     ]);
 
     (function () {
-      var collection = securedCollectionForUpdateOptionsTest;
+      var collection = restrictedCollectionForUpdateOptionsTest;
       testAsyncMulti("collection - update options", [
         // init
         function (test, expect) {
@@ -196,7 +274,7 @@
     }) ();
     
     _.each(
-      [securedCollectionDefaultInsecure, securedCollectionDefaultSecure],
+      [restrictedCollectionDefaultInsecure, restrictedCollectionDefaultSecure],
       function(collection) {
         testAsyncMulti("collection - " + collection._name, [
           // init
